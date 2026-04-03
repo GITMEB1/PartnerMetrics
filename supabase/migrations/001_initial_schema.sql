@@ -14,7 +14,7 @@ create table if not exists public.profiles (
 create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  created_by uuid not null references public.profiles(id),
+  created_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now()
 );
 
@@ -34,7 +34,7 @@ create table if not exists public.invitations (
   household_id uuid not null references public.households(id) on delete cascade,
   email text not null,
   token text not null unique,
-  invited_by uuid not null references public.profiles(id),
+  invited_by uuid not null references public.profiles(id) on delete cascade,
   status text not null check (status in ('pending', 'accepted', 'expired', 'revoked')) default 'pending',
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
@@ -47,7 +47,7 @@ create table if not exists public.metric_definitions (
   name text not null,
   description text,
   scope text not null check (scope in ('shared', 'personal')),
-  owner_user_id uuid references public.profiles(id),
+  owner_user_id uuid references public.profiles(id) on delete cascade,
   visible_to_partner boolean not null default true,
   input_type text not null check (input_type in ('boolean', 'count', 'duration_minutes', 'amount_decimal', 'rating_1_to_5', 'short_text')),
   unit text,
@@ -57,7 +57,7 @@ create table if not exists public.metric_definitions (
   color_token text,
   sort_order integer not null default 100,
   is_active boolean not null default true,
-  created_by uuid not null references public.profiles(id),
+  created_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
