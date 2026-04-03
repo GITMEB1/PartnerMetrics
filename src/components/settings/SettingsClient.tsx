@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
+import { useTheme } from "next-themes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { signOut } from "@/server/actions/auth";
 import { createInvitation, updateHousehold, revokeInvitation } from "@/server/actions/household";
 import type { Profile } from "@/types/db";
 import {
-  Settings, User, Home, Users, Mail, LogOut, Check, Copy, Loader2, Send,
+  Settings, User, Home, Users, Mail, LogOut, Check, Copy, Loader2, Send, Moon, Sun
 } from "lucide-react";
 
 type SettingsClientProps = {
@@ -32,6 +33,12 @@ export function SettingsClient({
 }: SettingsClientProps) {
   const [isPending, startTransition] = useTransition();
   const [householdName, setHouseholdName] = useState(household?.name || "");
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
   const [error, setError] = useState("");
@@ -137,6 +144,34 @@ export function SettingsClient({
           </CardContent>
         </Card>
       )}
+
+      {/* Appearance */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            {mounted && theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            Appearance
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium" htmlFor="theme-toggle">Dark Mode</Label>
+              <p className="text-xs text-muted-foreground">Toggle application theme</p>
+            </div>
+            {mounted && (
+              <Button
+                id="theme-toggle"
+                variant="outline"
+                size="sm"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              >
+                {theme === "dark" ? "Switch to Light" : "Switch to Dark"}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Members */}
       <Card>
