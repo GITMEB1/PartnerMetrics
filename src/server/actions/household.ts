@@ -158,3 +158,29 @@ export async function updateHousehold(formData: FormData): Promise<ActionResult>
   revalidatePath("/app/settings");
   return { success: true };
 }
+
+export async function revokeInvitation(invitationId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { data: membership } = await supabase
+    .from("household_members")
+    .select("household_id, role")
+    .eq("user_id", user.id)
+    .eq("role", "owner")
+    .single();
+
+  if (!membership) return { error: "Only the household owner can revoke invitations" };
+
+  const { error } = await supabase
+    .from("invitations")
+    .delete()
+    .eq("id", invitationId)
+    .eq("household_id", membership.household_id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/app/settings");
+  return { success: true };
+}

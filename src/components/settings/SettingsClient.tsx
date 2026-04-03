@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { signOut } from "@/server/actions/auth";
-import { createInvitation, updateHousehold } from "@/server/actions/household";
+import { createInvitation, updateHousehold, revokeInvitation } from "@/server/actions/household";
 import type { Profile } from "@/types/db";
 import {
   Settings, User, Home, Users, Mail, LogOut, Check, Copy, Loader2, Send,
@@ -17,7 +17,7 @@ type SettingsClientProps = {
   profile: Profile | null;
   household: { id: string; name: string } | null;
   members: { userId: string; displayName: string; role: string }[];
-  invitations: { id: string; email: string; status: string; created_at: string }[];
+  invitations: { id: string; email: string; status: string; created_at: string; token?: string }[];
   isOwner: boolean;
   userEmail: string;
 };
@@ -163,14 +163,47 @@ export function SettingsClient({
 
           {/* Pending invitations */}
           {invitations.map((inv) => (
-            <div key={inv.id} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5" />
+            <div key={inv.id} className="flex items-start justify-between group py-1">
+              <div className="flex flex-col gap-1 pb-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-sm font-medium">{inv.email}</span>
                 </div>
-                <span className="text-sm text-muted-foreground">{inv.email}</span>
+                {isOwner && inv.token && (
+                  <div className="flex gap-3 pl-10 pt-1">
+                    <Button 
+                      variant="link" 
+                      className="h-auto p-0 text-[11px] text-muted-foreground hover:text-primary" 
+                      onClick={async () => {
+                        const url = `${window.location.origin}/invite/${inv.token}`;
+                        await navigator.clipboard.writeText(url);
+                        setSuccess("Invite link copied!");
+                        setTimeout(() => setSuccess(""), 3000);
+                      }}
+                    >
+                      Copy link
+                    </Button>
+                    <Button 
+                      variant="link" 
+                      className="h-auto p-0 text-[11px] text-muted-foreground hover:text-destructive" 
+                      onClick={() => {
+                        startTransition(async () => {
+                          setError("");
+                          setSuccess("");
+                          const result = await revokeInvitation(inv.id);
+                          if (result.error) setError(result.error);
+                          else setSuccess("Invitation canceled");
+                        });
+                      }}
+                    >
+                      Cancel invite
+                    </Button>
+                  </div>
+                )}
               </div>
-              <Badge variant="warning" className="text-[10px]">
+              <Badge variant="warning" className="text-[10px] mt-1.5">
                 pending
               </Badge>
             </div>

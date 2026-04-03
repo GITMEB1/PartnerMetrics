@@ -39,7 +39,7 @@ export default async function SettingsPage() {
 
     const { data: inviteData } = await supabase
       .from("invitations")
-      .select("id, email, status, created_at")
+      .select("id, email, status, created_at, token")
       .eq("household_id", householdId)
       .eq("status", "pending");
 
