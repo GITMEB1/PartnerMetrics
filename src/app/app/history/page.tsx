@@ -4,9 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { MetricDefinition, DailyEntry } from "@/types/db";
 import type { TrendData } from "@/types/domain";
-import { TrendingUp, TrendingDown, Minus, Flame, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Flame, BarChart3, List } from "lucide-react";
+import { HistoryFilters } from "@/components/history/HistoryFilters";
 
-export default async function HistoryPage() {
+export default async function HistoryPage(props: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -25,10 +27,28 @@ export default async function HistoryPage() {
     );
   }
 
-  const dates7 = getDateRange(7);
-  const dates30 = getDateRange(30);
+  // Member fetching for filter
+  const { data: householdMembersRes } = await supabase
+    .from("household_members")
+    .select("*, profiles(display_name)")
+    .eq("household_id", membership.household_id);
 
-  // Fetch metrics and 30 days of entries
+  const members = householdMembersRes?.map(m => ({
+    id: m.user_id,
+    name: m.user_id === user.id ? "Me" : (m.profiles as any)?.display_name || "Partner",
+  })) || [];
+
+  const daysParam = parseInt(searchParams.days || "7", 10);
+  const daysCount = isNaN(daysParam) ? 7 : daysParam;
+  
+  const datesSelected = getDateRange(daysCount);
+  const totalDaysToFetch = daysCount * 2; // For trend comparison
+  const fetchDates = getDateRange(totalDaysToFetch);
+
+  const memberFilter = searchParams.member || user.id; // Default to current user
+  const metricFilter = searchParams.metric || "all";
+
+  // Fetch metrics and entries
   const [metricsRes, entriesRes] = await Promise.all([
     supabase
       .from("metric_definitions")
@@ -40,57 +60,73 @@ export default async function HistoryPage() {
       .from("daily_entries")
       .select("*")
       .eq("household_id", membership.household_id)
-      .eq("user_id", user.id)
-      .gte("entry_date", dates30[0])
-      .lte("entry_date", dates30[dates30.length - 1]),
+      .gte("entry_date", fetchDates[fetchDates.length - 1])
+      .lte("entry_date", fetchDates[0]),
   ]);
 
   const metrics = (metricsRes.data || []) as MetricDefinition[];
-  const entries = (entriesRes.data || []) as DailyEntry[];
+  const allEntries = (entriesRes.data || []) as DailyEntry[];
 
-  // Build user-relevant metrics (shared + own personal)
+  // Filter metrics user is allowed to see
   const relevantMetrics = metrics.filter(
-    (m) => m.scope === "shared" || m.owner_user_id === user.id
+    (m) =>
+      m.scope === "shared" ||
+      m.owner_user_id === user.id ||
+      (m.owner_user_id !== user.id && m.visible_to_partner)
   );
+  
+  const relevantMetricIds = new Set(relevantMetrics.map(m => m.id));
+
+  // Determine allowed entries
+  let allowedEntries = allEntries.filter(e => relevantMetricIds.has(e.metric_definition_id));
+
+  // Apply Member Filter onto entries
+  if (memberFilter !== "all") {
+     allowedEntries = allowedEntries.filter(e => e.user_id === memberFilter);
+  }
+
+  // Filter trends to what matches metricFilter
+  const metricsToDisplay = metricFilter === "all" 
+    ? relevantMetrics 
+    : relevantMetrics.filter(m => m.id === metricFilter);
 
   // Build trend data
-  const trends: TrendData[] = relevantMetrics
+  const trends: TrendData[] = metricsToDisplay
     .filter((m) => m.input_type !== "short_text")
     .map((metric) => {
-      const metricEntries = entries.filter(
+      const metricEntries = allowedEntries.filter(
         (e) => e.metric_definition_id === metric.id
       );
 
-      // 7-day values
-      const recent7 = metricEntries.filter((e) => dates7.includes(e.entry_date));
-      const prior7 = metricEntries.filter(
+      const recentSelected = metricEntries.filter((e) => datesSelected.includes(e.entry_date));
+      const priorSelected = metricEntries.filter(
         (e) =>
-          !dates7.includes(e.entry_date) &&
-          dates30.indexOf(e.entry_date) < dates30.length - 7
+          !datesSelected.includes(e.entry_date) &&
+          fetchDates.indexOf(e.entry_date) < fetchDates.length - daysCount
       );
 
-      const sum7 = recent7.reduce((acc, e) => {
+      const sumSelected = recentSelected.reduce((acc, e) => {
         const v = getEntryNumericValue(e, metric.input_type);
         return acc + (v ?? 0);
       }, 0);
 
-      const sum7Prior = prior7.slice(0, 7).reduce((acc, e) => {
+      const sumPrior = priorSelected.slice(0, daysCount).reduce((acc, e) => {
         const v = getEntryNumericValue(e, metric.input_type);
         return acc + (v ?? 0);
       }, 0);
 
       const currentValue =
         metric.input_type === "count" || metric.input_type === "boolean"
-          ? sum7
-          : recent7.length > 0
-          ? sum7 / recent7.length
+          ? sumSelected
+          : recentSelected.length > 0
+          ? sumSelected / recentSelected.length
           : null;
 
       const previousValue =
         metric.input_type === "count" || metric.input_type === "boolean"
-          ? sum7Prior
-          : prior7.length > 0
-          ? sum7Prior / Math.min(prior7.length, 7)
+          ? sumPrior
+          : priorSelected.length > 0
+          ? sumPrior / Math.min(priorSelected.length, daysCount)
           : null;
 
       const changePercent =
@@ -98,36 +134,32 @@ export default async function HistoryPage() {
           ? Math.round(((currentValue - previousValue) / previousValue) * 100)
           : null;
 
-      // Streak
-      const dailyValues = metricEntries
-        .map((e) => ({
-          date: e.entry_date,
-          value: getEntryNumericValue(e, metric.input_type) as number | boolean | null,
-        }))
-        .filter((v) => v.value != null);
-
-      const streak =
-        metric.target_value != null
-          ? calculateStreak(
-              metricEntries.map((e) => ({
-                date: e.entry_date,
-                value: meetsTarget(
-                  getEntryNumericValue(e, metric.input_type),
-                  metric.target_value,
-                  metric.target_operator
-                ),
-              }))
-            )
-          : calculateStreak(dailyValues);
-
-      // Daily chart data (7 days)
-      const chartData = dates7.map((d) => {
-        const e = metricEntries.find((e) => e.entry_date === d);
+      // Daily chart data (For all selected days)
+      // Group by date because if "member=all" is selected, we combine them
+      const chartData = datesSelected.map((d) => {
+        const entriesForDate = metricEntries.filter((e) => e.entry_date === d);
+        if (entriesForDate.length === 0) return { date: d, value: null };
+        const combinedVal = entriesForDate.reduce((acc, e) => {
+           const v = getEntryNumericValue(e, metric.input_type);
+           return acc + (v ?? 0);
+        }, 0);
+        const avgVal = metric.input_type === "rating_1_to_5" ? combinedVal / entriesForDate.length : combinedVal;
         return {
           date: d,
-          value: e ? getEntryNumericValue(e, metric.input_type) : null,
+          value: avgVal,
+          count: entriesForDate.length
         };
       });
+
+      // Streak
+      const streakValues = chartData.map(d => ({
+         date: d.date, 
+         value: metric.target_value != null 
+             ? meetsTarget(d.value, metric.target_value, metric.target_operator) 
+             : !!d.value
+      })).filter(v => typeof v.value !== "undefined" && v.value !== null);
+
+      const streak = calculateStreak(streakValues as any);
 
       return {
         metricId: metric.id,
@@ -144,55 +176,105 @@ export default async function HistoryPage() {
       };
     });
 
-  // Recent notes
-  const { data: notes } = await supabase
+  // Recent notes (only for current filter)
+  let notesQuery = supabase
     .from("daily_notes")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("household_id", membership.household_id)
     .order("entry_date", { ascending: false })
     .limit(5);
+
+  if (memberFilter !== "all") {
+    notesQuery = notesQuery.eq("user_id", memberFilter);
+  }
+
+  const { data: notes } = await notesQuery;
+
+  // Raw entries list
+  const recentRawEntries = [...allowedEntries]
+    .filter(e => datesSelected.includes(e.entry_date))
+    .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">History</h1>
-          <p className="text-sm text-muted-foreground">Last 7 days</p>
+          <p className="text-sm text-muted-foreground">{daysCount === 7 ? "Last 7 days" : "Last 30 days"}</p>
         </div>
         <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
           <BarChart3 className="h-5 w-5 text-primary" />
         </div>
       </div>
 
+      <HistoryFilters metrics={relevantMetrics.map(m => ({ id: m.id, name: m.name }))} members={members} />
+
       {/* Trend Cards */}
       <div className="space-y-3">
         {trends.map((trend) => (
-          <TrendCard key={trend.metricId} trend={trend} />
+          <TrendCard key={trend.metricId} trend={trend} daysCount={daysCount} />
         ))}
         {trends.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">
-            No metric data yet. Start logging on the Today page.
+            No metric data found for this selection.
           </p>
         )}
       </div>
 
+      {/* Raw Data List */}
+      {recentRawEntries.length > 0 && (
+        <section className="pt-4">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center">
+            <List className="w-4 h-4 mr-2" />
+            Raw Data
+          </h2>
+          <Card>
+            <CardContent className="p-0 overflow-hidden text-sm">
+              <div className="divide-y max-h-96 overflow-y-auto">
+                 {recentRawEntries.map(entry => {
+                    const metricDef = relevantMetrics.find(m => m.id === entry.metric_definition_id);
+                    if (!metricDef) return null;
+                    const val = getEntryNumericValue(entry, metricDef.input_type) ?? entry.value_text;
+                    const memberName = members.find(m => m.id === entry.user_id)?.name || "Unknown";
+                    
+                    return (
+                       <div key={entry.id} className="flex justify-between p-3 items-center hover:bg-muted/50 transition-colors">
+                          <div className="flex flex-col">
+                             <span className="font-medium text-xs sm:text-sm truncate max-w-[150px] sm:max-w-xs">{metricDef.name}</span>
+                             <span className="text-xs text-muted-foreground">{formatShortDate(entry.entry_date)} • {memberName}</span>
+                          </div>
+                          <div className="font-medium tabular-nums pl-2 text-right">
+                             {typeof val === 'boolean' ? (val ? 'Yes' : 'No') : val} {val !== null && typeof val !== 'boolean' && metricDef.unit && <span className="text-xs text-muted-foreground ml-0.5">{metricDef.unit}</span>}
+                          </div>
+                       </div>
+                    );
+                 })}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       {/* Recent Notes */}
       {notes && notes.length > 0 && (
-        <section>
+        <section className="pt-4">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Recent Notes
           </h2>
           <div className="space-y-2">
-            {notes.map((note) => (
-              <Card key={note.id}>
-                <CardContent className="p-3">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    {formatShortDate(note.entry_date)}
-                  </p>
-                  <p className="text-sm">{note.note}</p>
-                </CardContent>
-              </Card>
-            ))}
+            {notes.map((note) => {
+              const memberName = members.find(m => m.id === note.user_id)?.name || "Unknown";
+              return (
+                <Card key={note.id}>
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground mb-1">
+                      {formatShortDate(note.entry_date)} • {memberName}
+                    </p>
+                    <p className="text-sm">{note.note}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </section>
       )}
@@ -200,10 +282,9 @@ export default async function HistoryPage() {
   );
 }
 
-function TrendCard({ trend }: { trend: TrendData }) {
+function TrendCard({ trend, daysCount }: { trend: TrendData, daysCount: number }) {
   const isUp = trend.changePercent != null && trend.changePercent > 0;
   const isDown = trend.changePercent != null && trend.changePercent < 0;
-  const isNeutral = trend.changePercent === 0 || trend.changePercent === null;
 
   const formatValue = (v: number | null) => {
     if (v === null) return "—";
@@ -214,8 +295,8 @@ function TrendCard({ trend }: { trend: TrendData }) {
 
   const label =
     trend.metricInputType === "count" || trend.metricInputType === "boolean"
-      ? "7-day total"
-      : "7-day avg";
+      ? `${daysCount}-day total`
+      : `${daysCount}-day avg`;
 
   return (
     <Card>
@@ -251,7 +332,8 @@ function TrendCard({ trend }: { trend: TrendData }) {
         </div>
 
         {/* Mini bar chart */}
-        <div className="flex items-end gap-1 h-12">
+        <div className="flex items-end gap-[2px] h-12">
+           {/* If daysCount is 30, it might be too squeezed, but with tiny gap and no labels it works visually as sparkline */}
           {trend.dailyValues.map((d, i) => {
             const maxVal = Math.max(
               ...trend.dailyValues.map((v) => v.value ?? 0),
@@ -262,6 +344,8 @@ function TrendCard({ trend }: { trend: TrendData }) {
               trend.targetValue != null &&
               d.value != null &&
               meetsTarget(d.value, trend.targetValue, trend.targetOperator);
+
+            const showLabel = daysCount <= 7;
 
             return (
               <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5">
@@ -279,9 +363,11 @@ function TrendCard({ trend }: { trend: TrendData }) {
                     }}
                   />
                 </div>
-                <span className="text-[9px] text-muted-foreground">
-                  {formatShortDate(d.date).split(" ")[1]}
-                </span>
+                {showLabel && (
+                  <span className="text-[9px] text-muted-foreground">
+                    {formatShortDate(d.date).split(" ")[1]}
+                  </span>
+                )}
               </div>
             );
           })}

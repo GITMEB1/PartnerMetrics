@@ -60,7 +60,7 @@ export default async function TodayPage() {
     (m) => m.scope === "personal" && m.owner_user_id === user.id
   );
   const partnerPersonalMetrics = metrics.filter(
-    (m) => m.scope === "personal" && m.owner_user_id === partner?.id
+    (m) => m.scope === "personal" && m.owner_user_id === partner?.id && m.visible_to_partner
   );
 
   // All metrics the current user logs (shared + their personal)

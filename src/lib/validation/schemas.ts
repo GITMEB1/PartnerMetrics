@@ -76,6 +76,7 @@ export const metricDefinitionSchema = z
     target_operator: z.enum(["gte", "lte", "eq"]).optional().nullable(),
     icon: z.string().max(30).optional().nullable(),
     color_token: z.string().max(30).optional().nullable(),
+    visible_to_partner: z.boolean().optional().default(true),
   })
   .refine(
     (data) => {

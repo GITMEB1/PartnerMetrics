@@ -11,7 +11,7 @@ import { signOut } from "@/server/actions/auth";
 import { createInvitation, updateHousehold, revokeInvitation } from "@/server/actions/household";
 import type { Profile } from "@/types/db";
 import {
-  Settings, User, Home, Users, Mail, LogOut, Check, Copy, Loader2, Send, Moon, Sun
+  Settings, User, Home, Users, Mail, LogOut, Check, Copy, Loader2, Send, Moon, Sun, Download
 } from "lucide-react";
 
 type SettingsClientProps = {
@@ -286,6 +286,28 @@ export function SettingsClient({
         </CardContent>
       </Card>
 
+      {/* Export Data */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            Data Export
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">Download CSV</Label>
+              <p className="text-xs text-muted-foreground">Export all accessible history data</p>
+            </div>
+            <a href="/api/export" download>
+              <Button variant="outline" size="sm">
+                Export
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
       {/* Status Messages */}
       {error && (
         <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">

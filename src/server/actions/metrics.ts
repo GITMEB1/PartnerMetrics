@@ -22,6 +22,7 @@ export async function createMetric(formData: FormData): Promise<MetricResult> {
     target_operator: (formData.get("target_operator") as string) || undefined,
     icon: (formData.get("icon") as string) || undefined,
     color_token: (formData.get("color_token") as string) || undefined,
+    visible_to_partner: formData.get("visible_to_partner") !== "false",
   };
 
   const parsed = metricDefinitionSchema.safeParse(raw);
@@ -47,7 +48,7 @@ export async function createMetric(formData: FormData): Promise<MetricResult> {
     description: parsed.data.description || null,
     scope: parsed.data.scope,
     owner_user_id: parsed.data.scope === "personal" ? user.id : null,
-    visible_to_partner: true,
+    visible_to_partner: parsed.data.visible_to_partner ?? true,
     input_type: parsed.data.input_type,
     unit: parsed.data.unit || null,
     target_value: parsed.data.target_value ?? null,
@@ -81,6 +82,7 @@ export async function updateMetric(
       : undefined,
     target_operator: (formData.get("target_operator") as string) || undefined,
     icon: (formData.get("icon") as string) || undefined,
+    visible_to_partner: formData.get("visible_to_partner") !== "false",
   };
 
   const parsed = metricDefinitionSchema.safeParse(raw);
@@ -99,6 +101,7 @@ export async function updateMetric(
       description: parsed.data.description || null,
       scope: parsed.data.scope,
       owner_user_id: parsed.data.scope === "personal" ? user.id : null,
+      visible_to_partner: parsed.data.visible_to_partner ?? true,
       input_type: parsed.data.input_type,
       unit: parsed.data.unit || null,
       target_value: parsed.data.target_value ?? null,

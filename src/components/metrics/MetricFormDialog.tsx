@@ -29,10 +29,12 @@ export function MetricFormDialog({ children }: { children: React.ReactNode }) {
   const [success, setSuccess] = useState(false);
   const [selectedType, setSelectedType] = useState("count");
   const [selectedScope, setSelectedScope] = useState("personal");
+  const [visibleToPartner, setVisibleToPartner] = useState(true);
 
   function handleSubmit(formData: FormData) {
     formData.set("input_type", selectedType);
     formData.set("scope", selectedScope);
+    formData.set("visible_to_partner", String(visibleToPartner));
 
     startTransition(async () => {
       setError("");
@@ -105,6 +107,24 @@ export function MetricFormDialog({ children }: { children: React.ReactNode }) {
                     ))}
                   </div>
                 </div>
+
+                {selectedScope === "personal" && (
+                  <div className="flex items-center justify-between rounded-lg border border-border p-3 shadow-sm bg-muted/40">
+                    <div className="space-y-0.5">
+                      <Label>Publish to Household</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Allow your partner to see this metric
+                      </p>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      name="visible_to_partner_check"
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                      checked={visibleToPartner}
+                      onChange={(e) => setVisibleToPartner(e.target.checked)}
+                    />
+                  </div>
+                )}
 
                 {/* Input Type */}
                 <div className="space-y-1.5">

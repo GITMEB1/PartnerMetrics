@@ -74,8 +74,8 @@ export function MetricCard({ metric, entry, date, editable }: MetricCardProps) {
   return (
     <Card
       className={cn(
-        "transition-all",
-        targetMet && "border-success/30 bg-success/[0.03]",
+        "transition-all duration-500 relative overflow-hidden",
+        targetMet && "border-success/40 bg-success/[0.04] shadow-lg shadow-success/20 ring-1 ring-success/30",
         isPending && "opacity-80"
       )}
     >
